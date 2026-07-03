@@ -1,0 +1,291 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8" />
+  <title>Mitt spel</title>
+  <style>
+    body {
+      margin: 0;
+      background: #111;
+      overflow: hidden;
+      font-family: Arial, sans-serif;
+    }
+
+    canvas {
+      display: block;
+      margin: 20px auto;
+      background: #222;
+      border: 3px solid white;
+    }
+  </style>
+</head>
+<body>
+
+  <canvas id="game" width="600" height="400"></canvas>
+
+  <script>
+    const canvas = document.getElementById("game");
+    const ctx = canvas.getContext("2d");
+
+    let player = {
+      x: 50,
+      y: 150,
+      size: 45,
+      speed: 4
+    };
+
+    let bat = {
+      x: 500,
+      y: 300,
+      size: player.size,
+      speed: player.speed / 3
+    };
+
+    let coin = {
+      x: 300,
+      y: 200,
+      size: 20
+    };
+
+    let crystal = {
+      x: 200,
+      y: 100,
+      size: 18
+    };
+
+    let score = 3;
+    let crystals = 0;
+    let gameOver = false;
+    let keys = {};
+
+    const knightSvg = `
+      <svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64">
+        <rect x="18" y="16" width="28" height="24" rx="6" fill="#bdc3c7"/>
+        <rect x="18" y="28" width="28" height="12" rx="4" fill="#95a5a6"/>
+        <rect x="22" y="22" width="20" height="8" rx="2" fill="#2c3e50"/>
+        <circle cx="27" cy="26" r="2" fill="white"/>
+        <circle cx="37" cy="26" r="2" fill="white"/>
+        <polygon points="32,6 44,18 20,18" fill="#e74c3c"/>
+        <rect x="30" y="3" width="4" height="10" rx="2" fill="#f1c40f"/>
+        <rect x="22" y="38" width="20" height="18" rx="4" fill="#7f8c8d"/>
+        <rect x="29" y="40" width="6" height="16" fill="#95a5a6"/>
+        <rect x="13" y="36" width="9" height="17" rx="4" fill="#7f8c8d"/>
+        <rect x="42" y="36" width="9" height="17" rx="4" fill="#7f8c8d"/>
+        <rect x="51" y="25" width="4" height="28" fill="#ecf0f1"/>
+        <rect x="48" y="32" width="10" height="4" fill="#f1c40f"/>
+        <polygon points="53,18 58,25 48,25" fill="#ecf0f1"/>
+        <rect x="22" y="54" width="8" height="7" rx="2" fill="#2c3e50"/>
+        <rect x="34" y="54" width="8" height="7" rx="2" fill="#2c3e50"/>
+      </svg>
+    `;
+
+    const batSvg = `
+      <svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64">
+        <circle cx="32" cy="32" r="10" fill="#333"/>
+        <circle cx="27" cy="29" r="2" fill="red"/>
+        <circle cx="37" cy="29" r="2" fill="red"/>
+        <polygon points="22,22 16,10 28,20" fill="#333"/>
+        <polygon points="42,22 48,10 36,20" fill="#333"/>
+        <path d="M22 32 C10 20, 4 34, 2 42 C10 38, 14 44, 24 38 Z" fill="#222"/>
+        <path d="M42 32 C54 20, 60 34, 62 42 C54 38, 50 44, 40 38 Z" fill="#222"/>
+        <polygon points="29,38 32,43 35,38" fill="white"/>
+      </svg>
+    `;
+
+    const knightImage = new Image();
+    knightImage.src = "data:image/svg+xml;charset=utf-8," + encodeURIComponent(knightSvg);
+
+    const batImage = new Image();
+    batImage.src = "data:image/svg+xml;charset=utf-8," + encodeURIComponent(batSvg);
+
+    document.addEventListener("keydown", function(e) {
+      keys[e.key] = true;
+
+      if (gameOver && e.key === "r") {
+        restartGame();
+      }
+    });
+
+    document.addEventListener("keyup", function(e) {
+      keys[e.key] = false;
+    });
+
+    function movePlayer() {
+      if (gameOver) return;
+
+      if (keys["ArrowUp"]) player.y -= player.speed;
+      if (keys["ArrowDown"]) player.y += player.speed;
+      if (keys["ArrowLeft"]) player.x -= player.speed;
+      if (keys["ArrowRight"]) player.x += player.speed;
+
+      player.x = Math.max(0, Math.min(canvas.width - player.size, player.x));
+      player.y = Math.max(0, Math.min(canvas.height - player.size, player.y));
+    }
+
+    function moveBat() {
+      if (gameOver) return;
+
+      if (bat.x < coin.x) bat.x += bat.speed;
+      if (bat.x > coin.x) bat.x -= bat.speed;
+      if (bat.y < coin.y) bat.y += bat.speed;
+      if (bat.y > coin.y) bat.y -= bat.speed;
+
+      bat.x = Math.max(0, Math.min(canvas.width - bat.size, bat.x));
+      bat.y = Math.max(0, Math.min(canvas.height - bat.size, bat.y));
+    }
+
+    function spawnCoinNearPlayer() {
+      const maxDistance = 200;
+      const minDistance = 60;
+
+      const angle = Math.random() * Math.PI * 2;
+      const distance = minDistance + Math.random() * (maxDistance - minDistance);
+
+      coin.x = player.x + Math.cos(angle) * distance;
+      coin.y = player.y + Math.sin(angle) * distance;
+
+      coin.x = Math.max(0, Math.min(canvas.width - coin.size, coin.x));
+      coin.y = Math.max(0, Math.min(canvas.height - coin.size, coin.y));
+    }
+
+    function spawnCrystal() {
+      crystal.x = Math.random() * (canvas.width - crystal.size);
+      crystal.y = Math.random() * (canvas.height - crystal.size);
+    }
+
+    function isColliding(a, b) {
+      return (
+        a.x < b.x + b.size &&
+        a.x + a.size > b.x &&
+        a.y < b.y + b.size &&
+        a.y + a.size > b.y
+      );
+    }
+
+    function checkCollision() {
+      if (gameOver) return;
+
+      if (isColliding(player, coin)) {
+        score++;
+        spawnCoinNearPlayer();
+      }
+
+      if (isColliding(bat, coin)) {
+        score--;
+
+        if (score <= 0) {
+          if (crystals >= 10) {
+            crystals -= 10;
+            score = 20;
+            spawnCoinNearPlayer();
+          } else {
+            score = 0;
+            gameOver = true;
+          }
+        } else {
+          spawnCoinNearPlayer();
+        }
+      }
+
+      if (isColliding(player, crystal)) {
+        crystals++;
+        spawnCrystal();
+      }
+    }
+
+    function drawCrystal() {
+      ctx.fillStyle = "cyan";
+      ctx.beginPath();
+      ctx.moveTo(crystal.x + crystal.size / 2, crystal.y);
+      ctx.lineTo(crystal.x + crystal.size, crystal.y + crystal.size / 2);
+      ctx.lineTo(crystal.x + crystal.size / 2, crystal.y + crystal.size);
+      ctx.lineTo(crystal.x, crystal.y + crystal.size / 2);
+      ctx.closePath();
+      ctx.fill();
+    }
+
+    function draw() {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+      ctx.drawImage(knightImage, player.x, player.y, player.size, player.size);
+      ctx.drawImage(batImage, bat.x, bat.y, bat.size, bat.size);
+
+      ctx.fillStyle = "gold";
+      ctx.beginPath();
+      ctx.arc(
+        coin.x + coin.size / 2,
+        coin.y + coin.size / 2,
+        coin.size / 2,
+        0,
+        Math.PI * 2
+      );
+      ctx.fill();
+
+      drawCrystal();
+
+      ctx.fillStyle = "white";
+      ctx.font = "20px Arial";
+      ctx.fillText("Poäng: " + score, 20, 30);
+      ctx.fillText("Kristaller: " + crystals + " / 10", 20, 58);
+
+      if (crystals >= 10) {
+        ctx.fillStyle = "cyan";
+        ctx.fillText("Räddning redo!", 20, 86);
+      }
+
+      if (gameOver) {
+        ctx.fillStyle = "rgba(0, 0, 0, 0.7)";
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+        ctx.fillStyle = "red";
+        ctx.font = "48px Arial";
+        ctx.fillText("GAME OVER", 160, 180);
+
+        ctx.fillStyle = "white";
+        ctx.font = "22px Arial";
+        ctx.fillText("Tryck R för att börja om", 175, 225);
+      }
+    }
+
+    function restartGame() {
+      player.x = 50;
+      player.y = 150;
+
+      bat.x = 500;
+      bat.y = 300;
+
+      score = 3;
+      crystals = 0;
+      gameOver = false;
+
+      spawnCoinNearPlayer();
+      spawnCrystal();
+    }
+
+    function gameLoop() {
+      movePlayer();
+      moveBat();
+      checkCollision();
+      draw();
+
+      requestAnimationFrame(gameLoop);
+    }
+
+    let imagesLoaded = 0;
+
+    function startWhenReady() {
+      imagesLoaded++;
+
+      if (imagesLoaded === 2) {
+        spawnCoinNearPlayer();
+        spawnCrystal();
+        gameLoop();
+      }
+    }
+
+    knightImage.onload = startWhenReady;
+    batImage.onload = startWhenReady;
+  </script>
+
+</body>
+</html>
